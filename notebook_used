@@ -1,0 +1,356 @@
+begin
+    using LinearAlgebra
+	using BenchmarkTools
+	using Plots
+end
+
+begin
+	function complex_or_real(A)
+		if eltype(A) <: Real
+			return transpose(A)
+		elseif eltype(A)<: Complex
+			return adjoint(A)
+		end
+	end
+
+	
+	function newton_schulz(A,e=10^(-16),it_max=200) # iteração newton_schulz
+		X = copy(A)
+		n,m = size(A)
+		Y = zeros(eltype(A),n,m)
+		X = (1/norm(X,2)) * X
+		I = Diagonal(ones(eltype(A), m))
+	   for i in 1:it_max
+			Y = (1/2 * X) * (3*I - complex_or_real(X)*X)
+			
+			# if norm(Y-X)<e*n^2
+			# 	return Y,transpose(Y)*A
+			# else
+
+		   	#if abs(norm(Y)-m^(1/2))<e*n*m
+		   if norm(Y-X)<e*n*m
+				return Y,complex_or_real(Y)*A
+
+			else
+				X=Y
+			end
+		end
+		return Y,complex_or_real(Y)*A
+	end
+
+
+
+	function svd_way(A)                   #calcula decomposicao polar a partir da svd
+		U,Σ,V = svd(A)
+	
+		return U*complex_or_real(V),V*Diagonal(Σ)*complex_or_real(V)
+	end
+
+	function gerador(n) # basicamente gera uma matriz aleatória M com valores singulares distribuidos uniformemente entre (1/2,1)
+		A = rand(n,n)
+		B = rand(n,n)
+		Q1, R1 = qr(A)
+		Q2, R2 = qr(B)
+		vetor = 0.5 .+ 0.5.*rand(n) 
+		Σ = Diagonal(vetor)
+		M = Q1*Σ*Q2
+		return M
+	end
+
+	function  benchmark_1() # basicamente roda o benchmark de newton_schulz e svd_way para matrizes geradas pelo gerador de dimensoes no vetor dim e armazena os resultados de média e o desvio padrão
+		dim = [3,10,100,1000]
+		data_points = [40,20,5,1]
+		result_final = []
+		for i in 1:4
+	
+			data = [gerador(dim[i]) for j in 1:data_points[i]]
+	
+			(mean_ns,std_ns)= benchmark_ns(data)
+			(mean_svd,std_svd) = benchmark_svd(data)
+			push!(result_final,(dim[i],mean_ns,mean_svd,std_ns,std_svd))
+	
+		end
+		
+		return result_final
+
+	end
+	
+	function  benchmark_2() #mesma coisado benchmark_1 mas com matrizes aleatórias com distribuição uniforme no intervalo (0,1)
+		dim = [3,10,100,1000]
+		data_points = [40,20,5,1]
+		result_final = []
+		for i in 1:4
+	
+			data = [rand(dim[i],dim[i]) for j in 1:data_points[i]]
+	
+			(mean_ns,std_ns)= benchmark_ns(data)
+			(mean_svd,std_svd) = benchmark_svd(data)
+			push!(result_final,(dim[i],mean_ns,mean_svd,std_ns,std_svd))
+	
+		end
+			
+		return result_final
+
+	end
+	function benchmark_3()
+		dim = [3,10,100,1000]
+		data_points = [40,20,5,1]
+		result_final = []
+		for i in 1:4
+	
+			data = [rand(dim[i],dim[i]) + im * rand(dim[i],dim[i]) for j in 1:data_points[i]]
+	
+			(mean_ns,std_ns)= benchmark_ns(data)
+			(mean_svd,std_svd) = benchmark_svd(data)
+			push!(result_final,(dim[i],mean_ns,mean_svd,std_ns,std_svd))
+	
+		end
+			
+		return result_final
+	end
+
+	function ultimo_grafico(A,e=10^(-16),it_max=100) # gera o ultimo gráfico. basicamente salva o quanto a matrix (X_k) vai se aproximando da forma unitária(ortogonal) conforme as iterações
+		lista = []
+		X = copy(A)
+		n,m = size(A)
+		Y = zeros(eltype(A),n,m)
+		X = (1/norm(X,2)) * X
+		I = Diagonal(ones(eltype(A), m))
+		push!(lista,norm(X))
+	   for i in 1:it_max
+			Y = (1/2 * X) * (3*I - complex_or_real(X)*X)
+			push!(lista,norm(Y))
+		   X=Y
+		end
+		return lista
+	end
+
+	
+end
+
+
+
+begin
+
+
+dim1 = [3,10,100,1000]
+data_points1 = [40,20,10,1]
+result_final1 = []
+for j in 1:4
+
+	data12 = [gerador(dim1[j]) for i in 1:data_points1[j]]
+
+end
+end
+
+
+ begin 
+ custom_params = BenchmarkTools.DEFAULT_PARAMETERS
+ custom_params.samples = 200      
+ custom_params.evals = 2000
+ end
+
+begin
+function benchmark_ns(data)
+	result = []
+
+	for element in data
+		teste1 = @benchmark map(newton_schulz,$[element])
+		push!(result,mean(teste1).time,std(teste1).time)
+	end
+	if length(result)>2
+
+		return (mean(result[1:2:end-1]),mean(result[2:2:end]))
+	else
+		return (result[1],result[2])
+	end
+end
+
+function benchmark_svd(data)
+	result = []
+
+	for element in data
+		teste1 = @benchmark map(svd,$[element])
+		push!(result,mean(teste1).time,std(teste1).time)
+	end
+	if length(result)>2
+
+		return (mean(result[1:2:end-1]),mean(result[2:2:end]))
+	else
+		return (result[1], result[2])
+	end
+end
+end
+
+benchmark1 = benchmark_1()
+
+begin
+	#benchmark1 = benchmark_1()
+	graficos = []
+	for element in benchmark1
+		if element[1]<100
+			ylabel = "time in μs"
+			div = 10^3
+		else
+			ylabel = "time in ms"
+			div = 10^6
+		end
+		times = [element[2]/div,element[3]/div]
+		std = [element[4]/div,element[5]/div]
+		x= element[1]
+		y1 = element[2]/div
+		y2 = element[3]/div
+		y1_for = round(y1, digits=2)
+		y2_for = round(y2, digits=2)
+	plot1 = bar(["newton_schulz","svd"], times, label="N-S: $y1_for μs\n\nSVD: $y2_for μs",yerr=std, xlabel="Dimension = $x", ylabel=ylabel,color=:purple, title="Time Comparison",legend = :bottom)
+	
+	push!(graficos,plot1)
+	end
+end
+
+benchmark2 = benchmark_2()
+
+begin
+	#benchmark2 = benchmark_2()
+	graficos2 = []
+	for element in benchmark2
+		if element[1]<100
+			ylabel1 = "time in μs"
+			div1 = 10^3
+		else
+			ylabel1 = "time in ms"
+			div1 = 10^6
+		end
+		times1 = [element[2]/div1,element[3]/div1]
+		std1 = [element[4]/div1,element[5]/div1]
+		x1= element[1]
+		y1 = element[2]/div1
+		y2 = element[3]/div1
+		y1_for = round(y1, digits=2)
+		y2_for = round(y2, digits=2)
+	plot11 = bar(["newton_schulz","svd"], times1,yerr=std1, xlabel="Dimension = $x1", ylabel=ylabel1,color=:purple ,label="N-S: $y1_for ms\n\nSVD: $y2_for ms",title="Time Comparison")
+	
+	push!(graficos2,plot11)
+	end
+end
+
+benchmark3 = benchmark_3()
+
+begin
+	#benchmark3 = benchmark_3()
+	graficos3 = []
+	for element in benchmark3
+		if element[1]<100
+			ylabel2 = "time in μs"
+			div2 = 10^3
+		else
+			ylabel2 = "time in ms"
+			div2 = 10^6
+		end
+		times2 = [element[2]/div2,element[3]/div2]
+		std2 = [element[4]/div2,element[5]/div2]
+		x2= element[1]
+		y1 = element[2]/div2
+		y2 = element[3]/div2
+		y1_for = round(y1, digits=2)
+		y2_for = round(y2, digits=2)
+	plot22 = bar(["newton_schulz","svd"], times2, label="N-S: $y1_for ms\n\nSVD: $y2_for ms",yerr=std2, xlabel="Dimension = $x2", ylabel=ylabel2,color=:purple ,title="Time Comparison")
+	
+	push!(graficos3,plot22)
+	end
+end
+
+
+begin
+	all_results = []
+	all_results_complex = []
+	all_results_non = []
+	for elem in [3,10,100,1000]
+		
+		result = ultimo_grafico(rand(elem,elem))
+		result_complex = ultimo_grafico(rand(elem,elem) + im * rand(elem,elem))
+		result_non = ultimo_grafico(gerador(elem))
+		append!(all_results, result)
+		append!(all_results_complex,result_complex)
+		append!(all_results_non,result_non)
+	end
+end
+
+
+begin # talvez rodar várias vezes e fazer um gráfico médio com os cones de variância
+	all = [all_results[i:i+100] for i in 1:101:length(all_results)]
+	scat = scatter(
+    [i for i in 1:101], all[1],title = "",      
+    xlabel = "Number of Iterations", ylabel = "Frobenius Norm", legend = false,      
+    linewidth = 2, linestyle = :solid, linecolor = :blue ,
+	xlims = (0, 30), ylims = (0, 35), dpi = 300)
+
+	hline!([3^(1/2)], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=2")
+	annotate!([(-0.2, √3, text("√3", :right, 10, :blue))])
+	for element in all[2:end]
+		
+	scatter!(scat,[i for i in 1:101],element,dpi=300)
+		
+	end
+	for element in [10^(1/2),100^(1/2),1000^(1/2)]
+		
+		hline!([element], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=5")
+
+	end
+	annotate!([(+1, 10^(1/2), text("√10", :bottom, 10, :blue))])
+	annotate!([(+1.1, 100^(1/2), text("√100", :bottom, 10, :blue))])
+	annotate!([(+1.4, 1000^(1/2), text("√1000", :bottom, 10, :blue))])
+
+end
+
+begin # talvez rodar várias vezes e fazer um gráfico médio com os cones de variância
+	all1 = [all_results_complex[i:i+100] for i in 1:101:length(all_results_complex)]
+	scat1 = scatter(
+    [i for i in 1:101], all1[1],title = "",      
+    xlabel = "Number of Iterations", ylabel = "Frobenius Norm", legend = false,      
+    linewidth = 2, linestyle = :solid, linecolor = :blue ,
+	xlims = (0, 30), ylims = (0, 40), dpi = 300)
+
+	hline!([3^(1/2)], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=2")
+	annotate!([(-0.2, √3, text("√3", :right, 10, :blue))])
+	for element in all1[2:end]
+		
+	scatter!(scat1,[i for i in 1:101],element,dpi=300)
+		
+	end
+	for element in [10^(1/2),100^(1/2),1000^(1/2)]
+
+		hline!([element], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=5")
+
+	end
+	annotate!([(+1, 10^(1/2), text("√10", :bottom, 10, :blue))])
+	annotate!([(+1.1, 100^(1/2), text("√100", :bottom, 10, :blue))])
+	annotate!([(+1.4, 1000^(1/2), text("√1000", :bottom, 10, :blue))])
+
+end
+
+begin # talvez rodar várias vezes e fazer um gráfico médio com os cones de variância
+	all2 = [all_results_non[i:i+100] for i in 1:101:length(all_results_non)]
+	scat2 = scatter(
+    [i for i in 1:101], all2[1],title = "",      
+    xlabel = "Number of Iterations", ylabel = "Frobenius Norm", legend = false,      
+    linewidth = 2, linestyle = :solid, linecolor = :blue ,
+	xlims = (0, 30), ylims = (0, 35), dpi = 300)
+
+	hline!([3^(1/2)], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=2")
+	annotate!([(-0.2, √3, text("√3", :right, 10, :blue))])
+	for element in all2[2:end]
+		
+	scatter!(scat2,[i for i in 1:101],element,dpi=300)
+		
+	end
+	for element in [10^(1/2),100^(1/2),1000^(1/2)]
+		
+		hline!([element], linestyle=:dash, linecolor=:blue, linewidth=2, label="y=5")
+
+	end
+	annotate!([(+1, 10^(1/2), text("√10", :bottom, 10, :blue))])
+	annotate!([(+1.1, 100^(1/2), text("√100", :bottom, 10, :blue))])
+	annotate!([(+1.4, 1000^(1/2), text("√1000", :bottom, 10, :blue))])
+
+end
